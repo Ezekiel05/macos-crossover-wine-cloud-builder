@@ -11,7 +11,7 @@ runs:
   using: "composite"
   steps:
       - name: Restore Source Code Tarball from Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache_sourcecode
         with:
           path: ${{ inputs.crossover-local-file }}.tar.gz

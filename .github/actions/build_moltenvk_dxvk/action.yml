@@ -24,10 +24,16 @@ runs:
         popd
 
     ############ Build and Install MoltenVK ##############
+    - name: Set up Python 3.11 (includes distutils)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
     - name: Build MoltenVK
       shell: bash
       run: |
         pushd ${{ inputs.crossover-source }}/moltenvk
+        python3 -m pip install --user setuptools --break-system-packages
         ./fetchDependencies --macos
         make macos
         popd
