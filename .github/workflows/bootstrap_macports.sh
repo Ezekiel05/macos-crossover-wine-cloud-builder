@@ -12,8 +12,9 @@ curl -fsSL "$archive_url" -o "$archive_path"
 sudo tar -xpf "$archive_path" -C /
 rm "$archive_path"
 
-export MANPATH="${MANPATH:-}"
+set +u
 source /opt/local/share/macports/setupenv.bash
+set -u
 sudo /opt/local/libexec/macports/postflight/postflight
 
 case "$(uname -m)" in
