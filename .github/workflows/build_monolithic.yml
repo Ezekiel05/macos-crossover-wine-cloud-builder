@@ -95,6 +95,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Bootstrap MacPorts
+        run: bash .github/workflows/bootstrap_macports.sh
+
+      - name: Install llvm-cx
+        run: sudo /opt/local/bin/port install llvm-cx
+
       - name: Get latest HomeBrew formulas/bottles
         run: |
           brew update
@@ -102,7 +108,6 @@ jobs:
       - name: Install Wine Build Dependencies
         run: |
           brew install  bison              \
-                        gcenx/wine/cx-llvm \
                         flex               \
                         mingw-w64          \
                         pkgconfig
@@ -125,11 +130,13 @@ jobs:
                         libpng             \
                         mpg123
 
-      - name: Add bison, cx-llvm, flex & krb5 to $PATH
+      - name: Add build tools to $PATH
         run: |
           set -x
+          echo "/opt/local/bin" >> $GITHUB_PATH
+          echo "/opt/local/sbin" >> $GITHUB_PATH
+          echo "/opt/local/libexec/llvm-cx/bin" >> $GITHUB_PATH
           echo "$(brew --prefix bison)/bin"   >> $GITHUB_PATH
-          echo "$(brew --prefix cx-llvm)/bin" >> $GITHUB_PATH
           echo "$(brew --prefix flex)/bin"    >> $GITHUB_PATH
           echo "$(brew --prefix krb5)/bin"    >> $GITHUB_PATH
 

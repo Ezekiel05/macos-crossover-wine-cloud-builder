@@ -48,14 +48,21 @@ then
 fi
 
 # Manually configure $PATH
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/Apple/usr/bin"
+export PATH="/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/Apple/usr/bin"
+
+if ! command -v port &> /dev/null
+then
+    echo "MacPorts could not be found; install MacPorts before building"
+    exit 1
+fi
 
 
 begingroup "Installing Dependencies"
+sudo port install llvm-cx
+
 # build dependencies
 brew install \
     bison \
-    gcenx/wine/cx-llvm \
     mingw-w64 \
     pkgconfig
 
@@ -75,7 +82,7 @@ fi
 endgroup
 
 
-export CC="$(brew --prefix cx-llvm)/bin/clang"
+export CC="$(port -q prefix)/libexec/llvm-cx/bin/clang"
 export CXX="${CC}++"
 export BISON="$(brew --prefix bison)/bin/bison"
 
