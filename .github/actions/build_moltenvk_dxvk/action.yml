@@ -19,7 +19,7 @@ runs:
       run: |
         pushd ${{ inputs.crossover-source }}/dxvk
         patch -p1 < ${{ github.workspace }}/0001-build-macOS-Fix-up-for-macOS.patch
-        patch -p1 < ${{ github.workspace }}/0002-fix-d3d11-header-for-MinGW-9-1883.patch
+        # patch -p1 < ${{ github.workspace }}/0002-fix-d3d11-header-for-MinGW-9-1883.patch
         patch -p1 < ${{ github.workspace }}/0003-fixes-for-mingw-gcc-12.patch
         popd
 
