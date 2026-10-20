@@ -37,24 +37,27 @@ runs:
       - name: Configure ${{ inputs.winearch }}
         id: configure
         env:
-          CC: clang
-          CXX: clang++
+          CC: /opt/local/libexec/llvm-cx/bin/clang -arch x86_64
+          CXX: /opt/local/libexec/llvm-cx/bin/clang++ -arch x86_64
           CROSSCFLAGS: ${{ inputs.crossflags }}
           CFLAGS: ${{ inputs.cflags }}
           LDFLAGS: ${{ inputs.ldflags }}
         run: |
           set -x
+          export CFLAGS="${CFLAGS} -arch x86_64 -I/opt/local/include"
+          export LDFLAGS="${LDFLAGS} -arch x86_64 -L/opt/local/lib -Wl,-rpath,/opt/local/lib"
 
-          export GPHOTO2_CFLAGS="-I$(brew --prefix libgphoto2)/include -I$(brew --prefix libgphoto2)/include/gphoto2"
-          export GPHOTO2_PORT_CFLAGS="-I$(brew --prefix libgphoto2)/include -I$(brew --prefix libgphoto2)/include/gphoto2"
-          export SDL2_CFLAGS="-I$(brew --prefix sdl2)/include -I$(brew --prefix sdl2)/include/SDL2"
+          export GPHOTO2_CFLAGS="-I/opt/local/include -I/opt/local/include/gphoto2"
+          export GPHOTO2_PORT_CFLAGS="${GPHOTO2_CFLAGS}"
+          export SDL2_CFLAGS="-I/opt/local/include -I/opt/local/include/SDL2"
 
           export ac_cv_lib_soname_vulkan=""
-          export ac_cv_lib_soname_MoltenVK="$(brew --prefix molten-vk)/lib/libMoltenVK.dylib"
+          export ac_cv_lib_soname_MoltenVK="${INSTALLROOT}/${MOLTENVK_DXVK_INSTALLATION}/usr/local/lib/libMoltenVK.dylib"
 
           mkdir -p ${{ inputs.build-dir }}/
           pushd ${{ inputs.build-dir }}
-          ${{ inputs.wine-configure }} \
+          arch -x86_64 ${{ inputs.wine-configure }} \
+                    --build=x86_64-apple-darwin \
                     --disable-option-checking \
                     --disable-tests \
                     --without-alsa \

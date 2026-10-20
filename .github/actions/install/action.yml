@@ -14,6 +14,6 @@ runs:
         run: |
           set -x
           pushd ${{ inputs.build-dir }}
-          make install-lib DESTDIR="${{ inputs.install-dir }}"
+          arch -x86_64 make install-lib DESTDIR="${{ inputs.install-dir }}"
           popd
         shell: bash

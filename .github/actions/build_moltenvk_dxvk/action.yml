@@ -40,7 +40,10 @@ runs:
         # CrossOver's MoltenVK sources rely on APIs in this bundled SPIRV-Cross snapshot.
         cp -R External/SPIRV-Cross "$RUNNER_TEMP/SPIRV-Cross"
         ./fetchDependencies --macos --spirv-cross-root "$RUNNER_TEMP/SPIRV-Cross"
-        make macos
+        ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES make macos
+        for dylib in Package/Latest/MoltenVK/dylib/macOS/*.dylib; do
+          test "$(/usr/bin/lipo -archs "$dylib")" = "x86_64"
+        done
         popd
 
     - name: Install MoltenVK
@@ -61,18 +64,6 @@ runs:
         popd
 
     ############ Build and Install DXVK ##############
-    - name: Get latest HomeBrew formulas/bottles
-      shell: bash
-      run: |
-        brew update
-
-    - name: Install Dependencies for DXVK
-      shell: bash
-      run: |
-        brew install  glslang   \
-                      mingw-w64 \
-                      meson
-
     - name: Build DXVK
       shell: bash
       run: |

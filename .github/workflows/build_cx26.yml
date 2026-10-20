@@ -22,12 +22,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify x86_64 build environment
+        run: |
+          set -euo pipefail
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            arch -x86_64 /usr/bin/true
+          fi
+
       - name: Restore MoltenVK / DXVK from cache
         uses: actions/cache@v4
         id: cache_moltenVK_DXVK
         with:
           path: ${{ env.INSTALLROOT }}/${{ env.MOLTENVK_DXVK_INSTALLATION }}
-          key: cache_moltenVK_DXVK_cx26_v1
+          key: cache_moltenVK_DXVK_cx26_x86_64_v1
+
+      - name: Bootstrap MacPorts
+        if: steps.cache_moltenVK_DXVK.outputs.cache-hit != 'true'
+        run: bash .github/workflows/bootstrap_macports.sh
+
+      - name: Install MoltenVK / DXVK build dependencies
+        if: steps.cache_moltenVK_DXVK.outputs.cache-hit != 'true'
+        run: arch -x86_64 sudo /opt/local/bin/port install glslang mingw-w64 meson
+
+      - name: Add MacPorts to $PATH
+        if: steps.cache_moltenVK_DXVK.outputs.cache-hit != 'true'
+        run: |
+          printf '%s\n' /opt/local/bin /opt/local/sbin >> "$GITHUB_PATH"
 
       - name: Get and Extract Source
         if: steps.cache_moltenVK_DXVK.outputs.cache-hit != 'true'
@@ -69,40 +89,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify x86_64 build environment
+        run: |
+          set -euo pipefail
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            arch -x86_64 /usr/bin/true
+          fi
+
       - name: Bootstrap MacPorts
         run: bash .github/workflows/bootstrap_macports.sh
 
       - name: Install llvm-cx
-        run: sudo /opt/local/bin/port install llvm-cx
+        run: arch -x86_64 sudo /opt/local/bin/port install llvm-cx
 
-      - name: Get latest HomeBrew formulas/bottles
-        run: brew update
+      - name: Verify x86_64 llvm-cx compiler
+        run: |
+          set -euo pipefail
+          printf 'int main(void) { return 0; }\n' |
+            arch -x86_64 /opt/local/libexec/llvm-cx/bin/clang \
+              -arch x86_64 -x c -c -o "$RUNNER_TEMP/llvm-cx-x86_64.o" -
+          test "$(/usr/bin/lipo -archs "$RUNNER_TEMP/llvm-cx-x86_64.o")" = "x86_64"
+          printf 'int main() { return 0; }\n' |
+            arch -x86_64 /opt/local/libexec/llvm-cx/bin/clang++ \
+              -arch x86_64 -x c++ -c -o "$RUNNER_TEMP/llvm-cx-cxx-x86_64.o" -
+          test "$(/usr/bin/lipo -archs "$RUNNER_TEMP/llvm-cx-cxx-x86_64.o")" = "x86_64"
 
       - name: Install Wine Build Dependencies
         run: |
-          brew install  bison              \
-                        flex               \
-                        mingw-w64          \
-                        pkgconfig
+          arch -x86_64 sudo /opt/local/bin/port install \
+            bison flex gettext mingw-w64 pkgconfig
 
       - name: Install Wine Runtime Dependencies
         run: |
-          brew install  freetype           \
-                        gphoto2            \
-                        gst-plugins-base   \
-                        krb5               \
-                        molten-vk          \
-                        sane-backends      \
-                        sdl2
+          arch -x86_64 sudo /opt/local/bin/port install \
+            freetype \
+            gnutls-devel \
+            gettext-runtime \
+            libpcap \
+            libsdl2 \
+            gphoto2 \
+            gstreamer1-gst-plugins-base \
+            kerberos5 \
+            sane-backends
 
       - name: Add build tools to $PATH
         run: |
           echo "/opt/local/bin" >> $GITHUB_PATH
           echo "/opt/local/sbin" >> $GITHUB_PATH
           echo "/opt/local/libexec/llvm-cx/bin" >> $GITHUB_PATH
-          echo "$(brew --prefix bison)/bin"   >> $GITHUB_PATH
-          echo "$(brew --prefix flex)/bin"    >> $GITHUB_PATH
-          echo "$(brew --prefix krb5)/bin"    >> $GITHUB_PATH
 
       - name: Download MoltenVK / DXVK
         uses: actions/download-artifact@v4

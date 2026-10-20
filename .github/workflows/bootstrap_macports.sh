@@ -17,19 +17,11 @@ source /opt/local/share/macports/setupenv.bash
 set -u
 sudo /opt/local/libexec/macports/postflight/postflight
 
-case "$(uname -m)" in
-  arm64)
-    printf 'build_arch arm64\nuniversal_archs arm64 x86_64\n' |
-      sudo tee -a /opt/local/etc/macports/macports.conf >/dev/null
-    ;;
-  x86_64)
-    printf 'build_arch x86_64\n' |
-      sudo tee -a /opt/local/etc/macports/macports.conf >/dev/null
-    ;;
-  *)
-    echo "Unsupported runner architecture: $(uname -m)" >&2
-    exit 1
-    ;;
-esac
+if [[ "$(uname -m)" == "arm64" ]]; then
+  arch -x86_64 /usr/bin/true
+fi
+
+printf 'build_arch x86_64\nuniversal_archs x86_64\nui_interactive no\n' |
+  sudo tee -a /opt/local/etc/macports/macports.conf >/dev/null
 
 sudo /opt/local/bin/port sync
