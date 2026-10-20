@@ -34,7 +34,9 @@ runs:
       run: |
         pushd ${{ inputs.crossover-source }}/moltenvk
         python3 -m pip install --user setuptools --break-system-packages
-        ./fetchDependencies --macos
+        git clone https://github.com/KhronosGroup/SPIRV-Cross.git "$RUNNER_TEMP/SPIRV-Cross"
+        git -C "$RUNNER_TEMP/SPIRV-Cross" checkout 6c09849fe88c48eaed08413aa022aaa136a3a057
+        SPIRV_CROSS_ROOT="$RUNNER_TEMP/SPIRV-Cross" ./fetchDependencies --macos
         make macos
         popd
 
