@@ -1,0 +1,10 @@
+--- a/src/util/util_bit.h
++++ b/src/util/util_bit.h
+@@ -17,6 +17,7 @@
+ #include "util_likely.h"
+ #include "util_math.h"
+ 
++#include <cstdint>
+ #include <cstring>
+ #include <iterator>
+ #include <type_traits>
