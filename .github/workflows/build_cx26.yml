@@ -8,10 +8,10 @@ env:
     WINE_CONFIGURE: ${{ github.workspace }}/sources/wine/configure
     BUILDROOT: ${{ github.workspace }}/build
     INSTALLROOT: ${{ github.workspace }}/install
-    CROSS_OVER_VERSION: 26.2.0
-    CROSS_OVER_SOURCE_URL: https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.2.0.tar.gz
-    CROSS_OVER_LOCAL_FILE: crossover-26.2.0
-    WINE_INSTALLATION: wine-cx26.2.0
+    CROSS_OVER_VERSION: 26.3.0
+    CROSS_OVER_SOURCE_URL: https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
+    CROSS_OVER_LOCAL_FILE: crossover-26.3.0
+    WINE_INSTALLATION: wine-cx26.3.0
     MOLTENVK_DXVK_INSTALLATION: moltenvk-dxvk
 
 jobs:
