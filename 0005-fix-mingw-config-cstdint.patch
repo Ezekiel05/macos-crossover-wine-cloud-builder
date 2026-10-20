@@ -1,0 +1,9 @@
+--- a/src/util/config/config.h
++++ b/src/util/config/config.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <cstdint>
+ #include <string>
+ #include <unordered_map>
+ 
