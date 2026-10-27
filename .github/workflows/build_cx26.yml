@@ -99,9 +99,50 @@ jobs:
       - name: Bootstrap MacPorts
         run: bash .github/workflows/bootstrap_macports.sh
 
+      - name: Make MacPorts build with Xcode
+        # MacPorts compiles with the Command Line Tools when they exist, but on GitHub's Apple Silicon
+        # runners their libxcrun has no x86_64 slice, so every x86_64 build fails ("unable to load libxcrun").
+        # Hiding them makes MacPorts use the full Xcode, which works under Rosetta.
+        run: |
+          set -euo pipefail
+          if [ -d /Library/Developer/CommandLineTools ]; then
+            sudo mv /Library/Developer/CommandLineTools /Library/Developer/CommandLineTools.disabled
+          fi
+          xcode-select -p
+          arch -x86_64 /usr/bin/xcrun --show-sdk-path
+
+      # Building llvm-cx takes over an hour, so keep the result between runs
+      - name: Restore llvm-cx from cache
+        id: llvmcx-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/llvm-cx-cache/llvm-cx.tar.gz
+          key: llvm-cx-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/install_llvm_cx.sh') }}
+
+      - name: Unpack cached llvm-cx
+        if: steps.llvmcx-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo mkdir -p /opt/local/libexec
+          sudo tar -xzf "$RUNNER_TEMP/llvm-cx-cache/llvm-cx.tar.gz" -C /opt/local/libexec
+          /opt/local/libexec/llvm-cx/bin/clang --version
+
       - name: Install llvm-cx
+        if: steps.llvmcx-cache.outputs.cache-hit != 'true'
         timeout-minutes: 300
         run: bash .github/workflows/install_llvm_cx.sh
+
+      - name: Pack llvm-cx for the cache
+        if: steps.llvmcx-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/llvm-cx-cache"
+          tar -czf "$RUNNER_TEMP/llvm-cx-cache/llvm-cx.tar.gz" -C /opt/local/libexec llvm-cx
+
+      - name: Save llvm-cx to cache
+        if: steps.llvmcx-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/llvm-cx-cache/llvm-cx.tar.gz
+          key: ${{ steps.llvmcx-cache.outputs.cache-primary-key }}
 
       - name: Verify x86_64 llvm-cx compiler
         run: |
@@ -128,16 +169,16 @@ jobs:
             gettext-runtime \
             libpcap \
             libsdl2 \
-            gphoto2 \
             gstreamer1-gst-plugins-base \
-            kerberos5 \
-            sane-backends
+            kerberos5
 
       - name: Add build tools to $PATH
         run: |
           echo "/opt/local/bin" >> $GITHUB_PATH
           echo "/opt/local/sbin" >> $GITHUB_PATH
           echo "/opt/local/libexec/llvm-cx/bin" >> $GITHUB_PATH
+          # llvm-cx's clang doesn't locate the macOS SDK by itself
+          echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
 
       - name: Download MoltenVK / DXVK
         uses: actions/download-artifact@v4
