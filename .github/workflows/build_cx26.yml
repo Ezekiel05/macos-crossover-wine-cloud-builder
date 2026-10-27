@@ -202,6 +202,34 @@ jobs:
 
       # CrossOver 23+ dropped the old wine32on64 hack. Wine now builds 32- and 64-bit
       # Windows support in a single "WoW64" build, so there is one configure/make/install.
+      - name: Diagnose llvm-cx test programs
+        # Wine's configure says "cannot run C compiled programs"; this shows why.
+        run: |
+          set +e
+          cd "$RUNNER_TEMP"
+          printf '#include <stdio.h>\nint main(void){puts("hello from x86_64");return 0;}\n' > hello.c
+          echo "SDKROOT=$SDKROOT  MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-unset}"
+          try() {
+            local label="$1"; shift
+            echo "================ $label"
+            echo "+ $*"
+            "$@" hello.c -o "hello-$label" 2>&1 | tail -n 20
+            echo "compile exit: ${PIPESTATUS[0]}"
+            [ -f "hello-$label" ] || return
+            file "hello-$label"
+            otool -l "hello-$label" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | head -n 12
+            otool -L "hello-$label"
+            codesign -dv "hello-$label" 2>&1 | head -n 3
+            arch -x86_64 "./hello-$label"; echo "run exit: $?"
+          }
+          try llvmcx        /opt/local/libexec/llvm-cx/bin/clang -arch x86_64 -g -O2 -Wl,-headerpad_max_install_names
+          try llvmcx-11     /opt/local/libexec/llvm-cx/bin/clang -arch x86_64 -mmacosx-version-min=11.0
+          try llvmcx-sign   sh -c '/opt/local/libexec/llvm-cx/bin/clang -arch x86_64 "$0" -o "$2" && codesign -s - -f "$2"' 
+          try appleclang    /usr/bin/clang -arch x86_64
+          echo "================ verbose link (llvm-cx)"
+          /opt/local/libexec/llvm-cx/bin/clang -arch x86_64 -v hello.c -o hello-v 2>&1 | tail -n 15
+          exit 0
+
       - name: Configure wine
         uses: ./.github/actions/configure_wine
         with:
