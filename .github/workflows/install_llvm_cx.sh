@@ -1,9 +1,6 @@
 #!/bin/bash
 # Installs CodeWeavers' llvm-cx compiler into /opt/local/libexec/llvm-cx.
-# 1. MacPorts with its default compiler
-# 2. MacPorts with Xcode's clang
-# 3. Builds it directly from the CrossOver sources with a modern CMake
-#    (MacPorts' port uses the ancient cmake-bootstrap 3.9.6, which can break on new macOS)
+# MacPorts downloads the CrossOver compiler source; we build it with Xcode's clang + CMake 3.x.
 set -uo pipefail
 
 PORT=(arch -x86_64 sudo /opt/local/bin/port)
@@ -20,14 +17,14 @@ show_logs() {
   echo "=========================================================================="
 }
 
-if "${PORT[@]}" -N install llvm-cx; then exit 0; fi
-echo "::warning::llvm-cx failed with MacPorts' default compiler; retrying with Xcode's clang"
-show_logs
-"${PORT[@]}" clean llvm-cx
-
-if "${PORT[@]}" -N install llvm-cx configure.compiler=clang; then exit 0; fi
-echo "::warning::llvm-cx failed with Xcode's clang too; building it from source with a modern CMake"
-show_logs
+# MacPorts' own build of llvm-cx can't work on GitHub's Apple Silicon runners: it forces
+# DEVELOPER_DIR=CommandLineTools, whose libxcrun has no x86_64 slice, so every compiler call
+# fails under Rosetta. We only let MacPorts download the source, then build it ourselves.
+if ! "${PORT[@]}" -N fetch llvm-cx; then
+  echo "::error::Could not download the llvm-cx source"
+  show_logs
+  exit 1
+fi
 
 set -e
 TARBALL="$(sudo find /opt/local/var/macports/distfiles -name 'crossover-sources-*.tar.gz' | head -n 1)"
@@ -42,6 +39,10 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 sudo tar -xzf "$TARBALL" -C "$WORK" sources/clang
 sudo chown -R "$(id -u)" "$WORK"
 ln -sfn "$WORK/sources/clang/clang" "$WORK/sources/clang/llvm/projects/clang"
+
+# Newer libc++ made std::string's converting constructor explicit; fix the one place this breaks
+sed -i '' 's/SpecialCaseList::createOrDie({{ClBlacklist}})/SpecialCaseList::createOrDie({std::string(ClBlacklist)})/' \
+  "$WORK/sources/clang/llvm/tools/sancov/sancov.cpp" || true
 
 # x86_64 Python + CMake 3.x + Ninja, so the whole build runs as x86_64 under Rosetta
 arch -x86_64 /usr/bin/python3 -m venv "$WORK/venv"
@@ -95,9 +96,19 @@ arch -x86_64 "$CMAKE" -G Ninja \
   -DLLVM_INCLUDE_BENCHMARKS=OFF \
   -DLLVM_INCLUDE_DOCS=OFF \
   -DCLANG_INCLUDE_TESTS=OFF \
-  -DCLANG_INCLUDE_DOCS=OFF
+  -DCLANG_INCLUDE_DOCS=OFF \
+  -DLLVM_TOOL_SANCOV_BUILD=OFF
 
-arch -x86_64 "$CMAKE" --build "$WORK/build" -- -j"$(sysctl -n hw.ncpu)"
+# -k 0: keep building after a failure so one run reports every broken file
+if ! arch -x86_64 "$CMAKE" --build "$WORK/build" -- -k 0 -j"$(sysctl -n hw.ncpu)" > "$WORK/build.log" 2>&1; then
+  echo "::error::llvm-cx compile failed. Failed targets and errors:"
+  grep -E '^FAILED: |: error: ' "$WORK/build.log" | head -n 80
+  echo "--- last 60 lines of the build log"
+  tail -n 60 "$WORK/build.log"
+  trap - ERR
+  exit 1
+fi
+tail -n 5 "$WORK/build.log"
 sudo arch -x86_64 "$CMAKE" --install "$WORK/build"
 # Same as the MacPorts port: fall back on Xcode's libLTO
 sudo rm -f "$PREFIX/lib/libLTO.dylib"
