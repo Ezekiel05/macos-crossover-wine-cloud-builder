@@ -72,7 +72,12 @@ runs:
                     --without-gsm \
                     --without-quicktime \
                     --without-x \
-                    ${{ inputs.configure-params }} || cat config.log
+                    ${{ inputs.configure-params }} || {
+                      echo "::error::Wine configure failed. Last 150 lines of config.log:"
+                      tail -n 150 config.log
+                      exit 1
+                    }
+          test -f Makefile || { echo "::error::configure finished but produced no Makefile"; exit 1; }
           popd
 
         shell: bash

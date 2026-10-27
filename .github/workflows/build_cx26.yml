@@ -200,49 +200,33 @@ jobs:
           crossover-local-file: "${{ env.CROSS_OVER_LOCAL_FILE }}"
           crossover-source-url: "${{ env.CROSS_OVER_SOURCE_URL }}"
 
-      - name: Configure wine64
+      # CrossOver 23+ dropped the old wine32on64 hack. Wine now builds 32- and 64-bit
+      # Windows support in a single "WoW64" build, so there is one configure/make/install.
+      - name: Configure wine
         uses: ./.github/actions/configure_wine
         with:
-          winearch: "wine64"
-          build-dir: "${{ env.BUILDROOT }}/wine64"
+          winearch: "wine (WoW64)"
+          build-dir: "${{ env.BUILDROOT }}/wine"
           crossflags: "-g -O2"
-          configure-params: "--enable-win64 --with-vulkan"
+          configure-params: "--enable-archs=i386,x86_64 --with-vulkan"
 
-      - name: Build wine64
+      - name: Build wine
         uses: ./.github/actions/make
         with:
-          build-dir: "${{ env.BUILDROOT }}/wine64"
+          build-dir: "${{ env.BUILDROOT }}/wine"
 
-      - name: Configure wine32on64
-        uses: ./.github/actions/configure_wine
-        with:
-          winearch: "wine32on64"
-          build-dir: "${{ env.BUILDROOT }}/wine32on64"
-          crossflags: "-g -O2"
-          configure-params: "--enable-win32on64 --with-wine64=${{ env.BUILDROOT }}/wine64 --without-cms --without-openal --without-gstreamer --without-gphoto --without-krb5 --without-sane --without-vulkan --disable-vulkan_1 --disable-winedbg --disable-winevulkan"
-
-      - name: Build wine32on64
-        uses: ./.github/actions/make
-        with:
-          build-dir: "${{ env.BUILDROOT }}/wine32on64"
-
-      - name: Install wine32on64
+      - name: Install wine
         uses: ./.github/actions/install
         with:
-          build-dir: "${{ env.BUILDROOT }}/wine32on64"
+          build-dir: "${{ env.BUILDROOT }}/wine"
           install-dir: "${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}"
 
-      - name: Install wine64
-        uses: ./.github/actions/install
-        with:
-          build-dir: "${{ env.BUILDROOT }}/wine64"
-          install-dir: "${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}"
-
-      - name: Create wine, wine-preloader symlinks
+      - name: Add wine64 compatibility symlink
         run: |
           pushd ${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}/usr/local/bin
-          ln -s wine32on64 wine
-          ln -s wine32on64-preloader wine-preloader
+          ls -la
+          # Newer Wine installs a single "wine" loader; keep "wine64" for tools that expect it.
+          if [ -e wine ] && [ ! -e wine64 ]; then ln -s wine wine64; fi
           popd
 
       - name: Tar Wine
