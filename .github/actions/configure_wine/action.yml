@@ -27,6 +27,14 @@ inputs:
     description: 'Path to wine configure script'
     required: true
     default: ${{ github.workspace }}/sources/wine/configure
+  cc:
+    description: 'C compiler (llvm-cx for the old wine32on64 builds; plain clang for WoW64 builds)'
+    required: false
+    default: "/opt/local/libexec/llvm-cx/bin/clang"
+  cxx:
+    description: 'C++ compiler'
+    required: false
+    default: "/opt/local/libexec/llvm-cx/bin/clang++"
   configure-params:
     description: 'additional parameters to be given to the wine configure script'
     required: true
@@ -37,8 +45,8 @@ runs:
       - name: Configure ${{ inputs.winearch }}
         id: configure
         env:
-          CC: /opt/local/libexec/llvm-cx/bin/clang -arch x86_64
-          CXX: /opt/local/libexec/llvm-cx/bin/clang++ -arch x86_64
+          CC: ${{ inputs.cc }} -arch x86_64
+          CXX: ${{ inputs.cxx }} -arch x86_64
           CROSSCFLAGS: ${{ inputs.crossflags }}
           CFLAGS: ${{ inputs.cflags }}
           LDFLAGS: ${{ inputs.ldflags }}

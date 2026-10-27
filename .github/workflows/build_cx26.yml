@@ -111,50 +111,8 @@ jobs:
           xcode-select -p
           arch -x86_64 /usr/bin/xcrun --show-sdk-path
 
-      # Building llvm-cx takes over an hour, so keep the result between runs
-      - name: Restore llvm-cx from cache
-        id: llvmcx-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/llvm-cx-cache/llvm-cx.tar.gz
-          key: llvm-cx-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/install_llvm_cx.sh') }}
-
-      - name: Unpack cached llvm-cx
-        if: steps.llvmcx-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo mkdir -p /opt/local/libexec
-          sudo tar -xzf "$RUNNER_TEMP/llvm-cx-cache/llvm-cx.tar.gz" -C /opt/local/libexec
-          /opt/local/libexec/llvm-cx/bin/clang --version
-
-      - name: Install llvm-cx
-        if: steps.llvmcx-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 300
-        run: bash .github/workflows/install_llvm_cx.sh
-
-      - name: Pack llvm-cx for the cache
-        if: steps.llvmcx-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$RUNNER_TEMP/llvm-cx-cache"
-          tar -czf "$RUNNER_TEMP/llvm-cx-cache/llvm-cx.tar.gz" -C /opt/local/libexec llvm-cx
-
-      - name: Save llvm-cx to cache
-        if: steps.llvmcx-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/llvm-cx-cache/llvm-cx.tar.gz
-          key: ${{ steps.llvmcx-cache.outputs.cache-primary-key }}
-
-      - name: Verify x86_64 llvm-cx compiler
-        run: |
-          set -euo pipefail
-          printf 'int main(void) { return 0; }\n' |
-            arch -x86_64 /opt/local/libexec/llvm-cx/bin/clang \
-              -arch x86_64 -x c -c -o "$RUNNER_TEMP/llvm-cx-x86_64.o" -
-          test "$(/usr/bin/lipo -archs "$RUNNER_TEMP/llvm-cx-x86_64.o")" = "x86_64"
-          printf 'int main() { return 0; }\n' |
-            arch -x86_64 /opt/local/libexec/llvm-cx/bin/clang++ \
-              -arch x86_64 -x c++ -c -o "$RUNNER_TEMP/llvm-cx-cxx-x86_64.o" -
-          test "$(/usr/bin/lipo -archs "$RUNNER_TEMP/llvm-cx-cxx-x86_64.o")" = "x86_64"
+      # CrossOver 26 builds Wine as WoW64 (32-bit code is PE, built by mingw-w64), so it no longer
+      # needs CodeWeavers' llvm-cx (an LLVM 8 fork that crashes on the macOS 26 SDK). Xcode's clang is used.
 
       - name: Install Wine Build Dependencies
         run: |
@@ -176,8 +134,6 @@ jobs:
         run: |
           echo "/opt/local/bin" >> $GITHUB_PATH
           echo "/opt/local/sbin" >> $GITHUB_PATH
-          echo "/opt/local/libexec/llvm-cx/bin" >> $GITHUB_PATH
-          # llvm-cx's clang doesn't locate the macOS SDK by itself
           echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
 
       - name: Download MoltenVK / DXVK
@@ -202,40 +158,14 @@ jobs:
 
       # CrossOver 23+ dropped the old wine32on64 hack. Wine now builds 32- and 64-bit
       # Windows support in a single "WoW64" build, so there is one configure/make/install.
-      - name: Diagnose llvm-cx test programs
-        # Wine's configure says "cannot run C compiled programs"; this shows why.
-        run: |
-          set +e
-          cd "$RUNNER_TEMP"
-          printf '#include <stdio.h>\nint main(void){puts("hello from x86_64");return 0;}\n' > hello.c
-          echo "SDKROOT=$SDKROOT  MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-unset}"
-          try() {
-            local label="$1"; shift
-            echo "================ $label"
-            echo "+ $*"
-            "$@" hello.c -o "hello-$label" 2>&1 | tail -n 20
-            echo "compile exit: ${PIPESTATUS[0]}"
-            [ -f "hello-$label" ] || return
-            file "hello-$label"
-            otool -l "hello-$label" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | head -n 12
-            otool -L "hello-$label"
-            codesign -dv "hello-$label" 2>&1 | head -n 3
-            arch -x86_64 "./hello-$label"; echo "run exit: $?"
-          }
-          try llvmcx        /opt/local/libexec/llvm-cx/bin/clang -arch x86_64 -g -O2 -Wl,-headerpad_max_install_names
-          try llvmcx-11     /opt/local/libexec/llvm-cx/bin/clang -arch x86_64 -mmacosx-version-min=11.0
-          try llvmcx-sign   sh -c '/opt/local/libexec/llvm-cx/bin/clang -arch x86_64 "$0" -o "$2" && codesign -s - -f "$2"' 
-          try appleclang    /usr/bin/clang -arch x86_64
-          echo "================ verbose link (llvm-cx)"
-          /opt/local/libexec/llvm-cx/bin/clang -arch x86_64 -v hello.c -o hello-v 2>&1 | tail -n 15
-          exit 0
-
       - name: Configure wine
         uses: ./.github/actions/configure_wine
         with:
           winearch: "wine (WoW64)"
           build-dir: "${{ env.BUILDROOT }}/wine"
           crossflags: "-g -O2"
+          cc: "/usr/bin/clang"
+          cxx: "/usr/bin/clang++"
           configure-params: "--enable-archs=i386,x86_64 --with-vulkan"
 
       - name: Build wine
