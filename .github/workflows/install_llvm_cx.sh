@@ -50,8 +50,24 @@ CMAKE="$WORK/venv/bin/cmake"
 NINJA="$WORK/venv/bin/ninja"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 
-# Older LLVM code + newer Apple clang/libc++ needs a few relaxations
-CXXFLAGS_EXTRA="-Wno-enum-constexpr-conversion -Wno-error -include cstdint -include limits"
+# The compiler only has to run on this build machine, so target a macOS the current SDK fully supports
+export MACOSX_DEPLOYMENT_TARGET=11.0
+
+# Older LLVM code + newer Apple clang/libc++ needs a few relaxations.
+# -Qunused-arguments stops "argument unused" warnings at link time, which make CMake's
+# flag checks (e.g. the C++11 check) wrongly report failure.
+CXXFLAGS_EXTRA="-Qunused-arguments -Wno-error -include cstdint -include limits"
+if echo 'int x;' | /usr/bin/clang++ -x c++ -Werror -Wno-enum-constexpr-conversion -fsyntax-only - 2>/dev/null; then
+  CXXFLAGS_EXTRA="$CXXFLAGS_EXTRA -Wno-enum-constexpr-conversion"
+fi
+echo "Extra C++ flags: $CXXFLAGS_EXTRA"
+
+show_cmake_logs() {
+  for f in "$WORK/build/CMakeFiles/CMakeError.log" "$WORK/build/CMakeFiles/CMakeConfigureLog.yaml"; do
+    [ -f "$f" ] && { echo "--- $f (last 150 lines)"; tail -n 150 "$f"; }
+  done
+}
+trap 'echo "::error::llvm-cx source build failed"; show_cmake_logs' ERR
 
 arch -x86_64 "$CMAKE" -G Ninja \
   -S "$WORK/sources/clang/llvm" -B "$WORK/build" \
@@ -63,7 +79,7 @@ arch -x86_64 "$CMAKE" -G Ninja \
   -DCMAKE_OSX_ARCHITECTURES=x86_64 \
   -DCMAKE_OSX_SYSROOT="$SDK" \
   -DCMAKE_CXX_FLAGS="$CXXFLAGS_EXTRA" \
-  -DCMAKE_C_FLAGS="-Wno-error" \
+  -DCMAKE_C_FLAGS="-Qunused-arguments -Wno-error" \
   -DPYTHON_EXECUTABLE="$WORK/venv/bin/python3" \
   -DLLVM_HOST_TRIPLE=x86_64-apple-darwin \
   -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-apple-darwin \
