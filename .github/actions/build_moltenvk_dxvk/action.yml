@@ -42,7 +42,18 @@ runs:
         ./fetchDependencies --macos --spirv-cross-root "$RUNNER_TEMP/SPIRV-Cross"
         ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES make macos
         for dylib in Package/Latest/MoltenVK/dylib/macOS/*.dylib; do
-          test "$(/usr/bin/lipo -archs "$dylib")" = "x86_64"
+          archs="$(/usr/bin/lipo -archs "$dylib")"
+          echo "$dylib: $archs"
+          case " $archs " in
+            *" x86_64 "*) ;;
+            *) echo "::error::$dylib has no x86_64 slice ($archs)"; exit 1 ;;
+          esac
+          if [ "$archs" != "x86_64" ]; then
+            /usr/bin/lipo "$dylib" -thin x86_64 -output "$dylib.thin"
+            mv "$dylib.thin" "$dylib"
+            /usr/bin/codesign --force --sign - "$dylib"
+          fi
+          echo "$dylib -> $(/usr/bin/lipo -archs "$dylib")"
         done
         popd
 
