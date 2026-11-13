@@ -2,6 +2,11 @@ name: Wine-Crossover-26-MacOS
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the finished Wine as a GitHub Release (WineBridge downloads it from there)'
+        type: boolean
+        default: true
 
 env:
     MACOSX_DEPLOYMENT_TARGET: 10.14
@@ -84,6 +89,8 @@ jobs:
   wine-crossover:
     needs: [moltenVK_DXVK]
     runs-on: macos-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -166,6 +173,8 @@ jobs:
           crossflags: "-g -O2"
           cc: "/usr/bin/clang"
           cxx: "/usr/bin/clang++"
+          # Load MoltenVK from the Wine's own lib folder, not the build machine's path
+          moltenvk-soname: "@loader_path/../../libMoltenVK.dylib"
           configure-params: "--enable-archs=i386,x86_64 --with-vulkan"
 
       - name: Build wine
@@ -187,6 +196,54 @@ jobs:
           if [ -e wine ] && [ ! -e wine64 ]; then ln -s wine wine64; fi
           popd
 
+      # The build links against MacPorts libraries in /opt/local/lib (FreeType, GnuTLS, SDL2, …),
+      # which other Macs don't have. Copy them, with their own dependencies, into the Wine's lib
+      # folder; WineBridge points DYLD_FALLBACK_LIBRARY_PATH there so they're found by name.
+      - name: Bundle runtime libraries
+        run: |
+          set -euo pipefail
+          LIB="${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}/usr/local/lib"
+          copy_with_deps() {
+            local f="$1" base
+            [ -e "$f" ] || return 0
+            base=$(basename "$f")
+            [ -e "$LIB/$base" ] && return 0
+            cp -L "$f" "$LIB/$base"
+            chmod u+w "$LIB/$base"
+            echo "bundled $base"
+            for d in $(otool -L "$f" | awk 'NR>1 && /\/opt\/local\/lib\//{print $1}'); do
+              copy_with_deps "$d"
+            done
+          }
+          # libraries Wine dlopen()s by name (recorded by configure) …
+          for f in $(grep -hoE "ac_cv_lib_soname_[A-Za-z0-9_]+='?/opt/local/lib/[^' ]+" "${{ env.BUILDROOT }}/wine/config.log" \
+                     | sed -E "s/^[^=]*='?//" | sort -u); do
+            copy_with_deps "$f"
+          done
+          # … and libraries its Unix side links directly
+          for so in "$LIB"/wine/x86_64-unix/*.so; do
+            for d in $(otool -L "$so" | awk 'NR>1 && /\/opt\/local\/lib\//{print $1}'); do copy_with_deps "$d"; done
+          done
+
+      # DXMT (DirectX 10/11 → Metal, github.com/3Shain/dxmt). WineBridge installs it per bottle.
+      - name: Bundle DXMT
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/dxmt" && cd "$RUNNER_TEMP/dxmt"
+          gh release download -R 3Shain/dxmt --pattern '*.tar.gz' --pattern '*.zip' --clobber
+          for a in *.tar.gz; do [ -f "$a" ] && tar -xzf "$a"; done
+          for a in *.zip; do [ -f "$a" ] && unzip -oq "$a"; done
+          SO=$(find . -path '*x86_64-unix/winemetal.so' | head -1)
+          [ -n "$SO" ]
+          SRC=$(dirname "$(dirname "$SO")")
+          DEST="${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}/usr/local/lib/dxmt"
+          mkdir -p "$DEST"
+          cp -R "$SRC"/. "$DEST"/
+          find "$DEST" -maxdepth 2 | head -40
+
       - name: Tar Wine
         run: |
           set -x
@@ -199,3 +256,22 @@ jobs:
         with:
           name: ${{ env.WINE_INSTALLATION }}
           path: ${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}.tar.gz
+
+      - name: Publish release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="wine-cx${{ env.CROSS_OVER_VERSION }}-build${{ github.run_number }}"
+          cat > notes.md <<NOTES
+          Wine built from CodeWeavers' open-source CrossOver ${{ env.CROSS_OVER_VERSION }} code
+          (source: ${{ env.CROSS_OVER_SOURCE_URL }}), for Intel and Apple Silicon (Rosetta) Macs.
+
+          Includes MoltenVK, DXVK and DXMT (github.com/3Shain/dxmt). Made for WineBridge, which downloads
+          the asset below automatically; it can also be used on its own (see usr/local/bin).
+          NOTES
+          gh release create "$TAG" "${{ env.INSTALLROOT }}/${{ env.WINE_INSTALLATION }}.tar.gz" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Wine CrossOver ${{ env.CROSS_OVER_VERSION }} (build ${{ github.run_number }})" \
+            --notes-file notes.md --latest

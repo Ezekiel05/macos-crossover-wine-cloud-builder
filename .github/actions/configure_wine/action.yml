@@ -35,6 +35,10 @@ inputs:
     description: 'C++ compiler'
     required: false
     default: "/opt/local/libexec/llvm-cx/bin/clang++"
+  moltenvk-soname:
+    description: 'Where Wine loads MoltenVK from at run time (default: the build machine path)'
+    required: false
+    default: ""
   configure-params:
     description: 'additional parameters to be given to the wine configure script'
     required: true
@@ -60,7 +64,11 @@ runs:
           export SDL2_CFLAGS="-I/opt/local/include -I/opt/local/include/SDL2"
 
           export ac_cv_lib_soname_vulkan=""
-          export ac_cv_lib_soname_MoltenVK="${INSTALLROOT}/${MOLTENVK_DXVK_INSTALLATION}/usr/local/lib/libMoltenVK.dylib"
+          if [ -n "${{ inputs.moltenvk-soname }}" ]; then
+            export ac_cv_lib_soname_MoltenVK="${{ inputs.moltenvk-soname }}"
+          else
+            export ac_cv_lib_soname_MoltenVK="${INSTALLROOT}/${MOLTENVK_DXVK_INSTALLATION}/usr/local/lib/libMoltenVK.dylib"
+          fi
 
           mkdir -p ${{ inputs.build-dir }}/
           pushd ${{ inputs.build-dir }}
